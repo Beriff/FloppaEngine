@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "scene.h"
+#include "parser.h"
 
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
@@ -13,6 +14,7 @@ const float HEIGHT_INV = 1 / (float)SCREEN_HEIGHT;
 using namespace floppa::render;
 
 scene scene1 = scene();
+meshinfo cube = meshinfo();
 
 /*bool loadContent() {
 
@@ -26,6 +28,8 @@ SDL_Texture* surface2texture(SDL_Renderer* renderer, SDL_Surface* surface) {
 }
 
 bool init(SDL_Window** window, SDL_Surface** surface, SDL_Renderer** renderer, SDL_Texture** texture) {
+	cube.parse("C:\\Users\\Maxim\\Desktop\\cube.obj");
+	cube.loadpolygons(&scene1);
 	if (SDL_Init(SDL_INIT_EVERYTHING) < 0) {
 		printf("SDL initialization failed: %s\n", SDL_GetError());
 		return false;
