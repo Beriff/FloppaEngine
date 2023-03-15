@@ -95,7 +95,7 @@ int main(int argc, char* argv[]) {
 
 	SDL_Texture* mainTexture;
 
-
+	std::cout << vector3f(1, 0, 0).cross(vector3f(0, 0, 1)).tostring();
 	if (init(&window, &screenSurface, &renderer, &mainTexture)) {
 		while (true) {
 			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);

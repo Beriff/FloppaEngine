@@ -31,9 +31,13 @@ namespace floppa::render {
 		float lengthsq();
 		vector3f(float x, float y, float z);
 		vector3f(void);
+		float max();
+		float min();
+		vector3f abs();
 		std::string tostring();
 		vector3f normalized();
 		float dot(vector3f other);
+		vector3f cross(vector3f other);
 		static vector3f zero();
 		vector3f operator+ (vector3f other);
 		vector3f operator- (vector3f other);
@@ -41,6 +45,12 @@ namespace floppa::render {
 		vector3f operator* (vector3f other);
 		vector3f operator/ (float scale);
 		vector3f operator/ (vector3f other);
+	};
+	struct vector2f { //apparently, is useful
+		float x;
+		float y;
+		vector2f(float x, float y);
+		vector2f(vector3f free_coord);
 	};
 
 	struct matrix3x3 {
@@ -78,6 +88,22 @@ namespace floppa::render {
 		sphere(vector3f center, float radius);
 	};
 
+	struct plane {
+		vector3f normal;
+		vector3f origin;
+		bool inplane(vector3f point);
+		plane(vector3f normal, vector3f origin);
+	};
+
+	struct polygon : shape {
+		vector3f p1;
+		vector3f p2;
+		vector3f p3;
+		
+		vector3f center;
+		polygon(vector3f p1, vector3f p2, vector3f p3);
+	};
+
 	struct ray {
 		vector3f direction;
 		vector3f origin;
@@ -85,7 +111,10 @@ namespace floppa::render {
 		vector3f getpoint(float t);
 
 		bool intersects_at(sphere body, float t);
+
 		bool intersection(sphere body, vector3f* result1, vector3f* result2);
+		bool intersection(plane planebody, vector3f* result);
+		bool intersection(polygon poly, vector3f* result);
 	};
 	
 
@@ -109,6 +138,7 @@ namespace floppa::render {
 	struct scene {
 		camera scene_camera;
 		std::vector<shape*> objects;
+		std::vector<plane*> planes;
 		scene();
 		void render(SDL_Texture* texture, int w, int h);
 	};
