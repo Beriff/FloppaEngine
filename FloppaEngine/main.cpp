@@ -7,6 +7,8 @@
 
 const int SCREEN_WIDTH = 800;
 const int SCREEN_HEIGHT = 600;
+const float WIDTH_INV = 1 / (float)SCREEN_WIDTH;
+const float HEIGHT_INV = 1 / (float)SCREEN_HEIGHT;
 
 using namespace floppa::render;
 
@@ -95,13 +97,12 @@ int main(int argc, char* argv[]) {
 
 	SDL_Texture* mainTexture;
 
-	std::cout << vector3f(1, 0, 0).cross(vector3f(0, 0, 1)).tostring();
 	if (init(&window, &screenSurface, &renderer, &mainTexture)) {
 		while (true) {
 			SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
 			SDL_RenderClear(renderer);
 
-			scene1.render(mainTexture, SCREEN_WIDTH, SCREEN_HEIGHT);
+			scene1.render(mainTexture, SCREEN_WIDTH, SCREEN_HEIGHT, WIDTH_INV, HEIGHT_INV);
 			SDL_RenderCopy(renderer, mainTexture, NULL, NULL);
 			SDL_RenderPresent(renderer);
 			if (!update(window, renderer)) { break; }

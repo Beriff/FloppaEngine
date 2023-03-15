@@ -4,6 +4,7 @@
 #include <vector>
 #include <iostream>
 #include <algorithm>
+#include <thread>
 
 #include "scene.h"
 
@@ -17,6 +18,7 @@ namespace floppa::render {
 	}
 	float lerp(float a, float b, float t) { return a * (1 - t) + b * t; };
 	float norm(float mx, float mn, float v) { return (v - mn) / (mx - mn); }
+
 
 	float vector3f::length() {
 		return sqrtf(x * x + y * y + z * z);
@@ -102,6 +104,7 @@ namespace floppa::render {
 			y = v3.y;
 		}
 	}
+	vector2f::vector2f() { x = 0; y = 0; }
 
 	rect3f::rect3f(vector3f start, vector3f end) {
 		this->start = start;
@@ -200,8 +203,13 @@ namespace floppa::render {
 	plane::plane(vector3f normal, vector3f origin) {
 		this->normal = normal;
 		this->origin = origin;
+		norm_origin_dot = origin.dot(normal);
 	}
-
+	plane::plane() {
+		normal = vector3f::zero();
+		origin = vector3f::zero();
+		norm_origin_dot = origin.dot(normal);
+	}
 	polygon::polygon(vector3f p1, vector3f p2, vector3f p3) {
 		this->p1 = p1;
 		this->p2 = p2;
@@ -210,6 +218,28 @@ namespace floppa::render {
 
 		vector3f mid = vector3f(lerp(p1.x, p2.x, .5f), lerp(p1.y, p2.y, .5f), lerp(p1.z, p2.z, .5f));
 		center = vector3f(lerp(mid.x, p3.x, .5f), lerp(mid.y, p3.y, .5f), lerp(mid.z, p3.z, .5f));
+		polygon_plane = plane((p2 - p1).cross(p3 - p1), center);
+
+		//HASH THE SHIT OUTTA IT
+
+		vector3f absnormal = polygon_plane.normal.abs();
+		float max = absnormal.max();
+
+		if (absnormal.x == max) { flattening_mask = vector3f(0, 1, 1); }
+		else if (absnormal.y == max) { flattening_mask = vector3f(1, 0, 1); }
+		else { flattening_mask = vector3f(1, 1, 0); }
+
+		flat_p1 = vector2f(p1 * flattening_mask);
+		flat_p2 = vector2f(p2 * flattening_mask);
+		flat_p3 = vector2f(p3 * flattening_mask);
+	}
+	polygon::polygon() {
+		p1 = vector3f::zero();
+		p2 = vector3f::zero();
+		p3 = vector3f::zero();
+		Type = ShapeType::Polygon;
+		center = vector3f::zero();
+		polygon_plane = plane();
 	}
 
 	//------ GEOMETRIC RAYS
@@ -228,7 +258,7 @@ namespace floppa::render {
 		vector3f diff = point - body.center;
 		return (diff * diff).lengthsq() == (body.radius * body.radius);
 	}
-	bool ray::intersection(sphere body, vector3f* result1, vector3f* result2) {
+	bool ray::intersection(sphere* body, vector3f* result1, vector3f* result2) {
 		//get b and c coefficients of quadratic equation (a = 1 because the ray direction is normalized)
 		//At^2+Bt+C computes sphere intersection points (if discriminant is less than 0, then the ray misses the sphere)
 
@@ -237,13 +267,13 @@ namespace floppa::render {
 		* into the implicit sphere equation (X^2 + Y^2 + Z^2 = r^2)
 		*/
 		float B = 2 * (
-			direction.x * (origin.x - body.center.x) +
-			direction.y * (origin.y - body.center.y) +
-			direction.z * (origin.z - body.center.z));
-		float C = (origin.x - body.center.x) * (origin.x - body.center.x) +
-			(origin.y - body.center.y) * (origin.y - body.center.y) +
-			(origin.z - body.center.z) * (origin.z - body.center.z)
-			- body.radius * body.radius;
+			direction.x * (origin.x - body->center.x) +
+			direction.y * (origin.y - body->center.y) +
+			direction.z * (origin.z - body->center.z));
+		float C = (origin.x - body->center.x) * (origin.x - body->center.x) +
+			(origin.y - body->center.y) * (origin.y - body->center.y) +
+			(origin.z - body->center.z) * (origin.z - body->center.z)
+			- body->radius * body->radius;
 
 		//compute the discriminant
 		float d = B * B - 4 * C;
@@ -258,26 +288,21 @@ namespace floppa::render {
 		*result2 = t2;
 		return true;
 	}
-	bool ray::intersection(plane planebody, vector3f* result) {
-		float coeff1 = planebody.normal.dot(this->direction);
+	bool ray::intersection(plane* planebody, vector3f* result) {
+		float coeff1 = planebody->normal.dot(this->direction);
 		// if dot product of plane normal and ray's direction is 0, then the ray is parallel to the plane
 		// therefore, no intersection occurs
 		if (coeff1 == 0) { return false; }
 		
-		float coeff2 = -(planebody.normal.dot(this->origin) + planebody.origin.dot(planebody.normal));
+		float coeff2 = -(planebody->normal.dot(this->origin) + planebody->norm_origin_dot);
 
 		*result = getpoint(coeff2 / coeff1);
 		return true;
 	}
-	bool ray::intersection(polygon poly, vector3f* result) {
-		plane polyplane = plane((poly.p2 - poly.p1).cross(poly.p3 - poly.p1), poly.center);
+	float sign(vector2f p1, vector2f p2, vector2f p3) { return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y); }
+	bool ray::intersection(polygon* poly, vector3f* result) {
 		vector3f intsc_point;
-		if (!intersection(polyplane, &intsc_point)) { return false; }
-
-		//aux function to check if a 2d point is located at specific halfplane defined by a line (2 points)
-		auto sign = [](vector2f p1, vector2f p2, vector2f p3) {
-			return (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
-		};
+		if (!intersection(&poly->polygon_plane, &intsc_point)) { return false; }
 
 		/*
 		Project the polygon onto a 2d plane. Project by throwing away one of the coordinates.
@@ -285,26 +310,15 @@ namespace floppa::render {
 		away the coordinate that is the biggest one in plane's normal vector.
 		*/
 
-		vector3f mask;
-		vector3f absnormal = polyplane.normal.abs();
-		float max = absnormal.max();
-
-		if (absnormal.x == max) { mask = vector3f(0, 1, 1); }
-		else if (absnormal.y == max) { mask = vector3f(1, 0, 1); }
-		else { mask = vector3f(1, 1, 0); }
-
 		//algorithm to check if a 2d point inside a triangle \/\/\/
 
-		vector2f p1_2d = vector2f(poly.p1 * mask);
-		vector2f p2_2d = vector2f(poly.p2 * mask);
-		vector2f p3_2d = vector2f(poly.p3 * mask);
-		vector2f intsc_2d = vector2f(intsc_point * mask);
+		vector2f intsc_2d = vector2f(intsc_point * poly->flattening_mask);
 
 		float d1, d2, d3;
 		bool hasneg, haspos;
-		d1 = sign(intsc_2d, p1_2d, p2_2d);
-		d2 = sign(intsc_2d, p2_2d, p3_2d);
-		d3 = sign(intsc_2d, p3_2d, p1_2d);
+		d1 = sign(intsc_2d, poly->flat_p1, poly->flat_p2);
+		d2 = sign(intsc_2d, poly->flat_p2, poly->flat_p3);
+		d3 = sign(intsc_2d, poly->flat_p3, poly->flat_p1);
 		hasneg = (d1 < 0) || (d2 < 0) || (d3 < 0);
 		haspos = (d1 > 0) || (d2 > 0) || (d3 > 0);
 
@@ -334,14 +348,14 @@ namespace floppa::render {
 		return (screen.center() - position).normalized();
 	}
 
-	bool camera::isrenderable(vector3f point) {
+	bool camera::isrenderable(vector3f& point) {
 		vector3f rvec = point - position;
 
 		//if point's distance too small, then its between the camera and the clipping plane
 		// => dont render it
 		//if dot product of the point's vector and camera's direction is
 		//smaller than 0, then its behind the camera (with respect to its facing direction)
-		return rvec.lengthsq() > clipping && rvec.dot(direction()) > 0;
+		return rvec.dot(direction()) > 1 && rvec.lengthsq() > clipping;
 	}
 
 	void camera::move(vector3f shift) {
@@ -396,7 +410,42 @@ namespace floppa::render {
 		}
 	}
 
-	void scene::render(SDL_Texture* texture, int w, int h) {
+	void renderregion(u32* pixels, int startx, int starty, int w, int h, float invw, float invh, std::vector<shape*>* sorted_bodies, camera* scene_camera,
+		int absw, int absh) {
+		vector3f t1, t2;
+		//float added_x = startx * invw;
+		//float added_y = starty * invh;
+
+
+		for (int x = startx; x < w; x += 2) {
+			for (int y = starty; y < h; y += 2) {
+				ray camera_ray = scene_camera->getray(x/(float)absw, y/(float)absh);
+				setpixel_interp(pixels, x, y, absw, packpixel(0, 0, 0, 0));
+				for (auto body : *sorted_bodies) {
+					vector3f center = getshapecenter(body);
+					if (body->Type == ShapeType::Sphere) {
+						if (camera_ray.intersection((sphere*)body, &t1, &t2) && (scene_camera->isrenderable(t1) || scene_camera->isrenderable(t2))) {
+							sphere* s = (sphere*)body;
+							setpixel_interp(pixels, x, y, absw,
+								packpixel(
+									norm(s->center.x + s->radius, s->center.x - s->radius, t1.x) * 255,
+									norm(s->center.y + s->radius, s->center.y - s->radius, t1.y) * 255,
+									norm(s->center.z + s->radius, s->center.z - s->radius, t1.z) * 255, 0));
+							break;
+						}
+					}
+					else if (body->Type == ShapeType::Polygon) {
+						if (camera_ray.intersection((polygon*)body, &t1) && (scene_camera->isrenderable(t1))) {
+							setpixel_interp(pixels, x, y, absw, packpixel(137, 137, 137, 0));
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+
+	void scene::render(SDL_Texture* texture, int w, int h, float invw, float invh) {
 		u32 grey = packpixel(137, 137, 137, 0);
 		vector3f t1 = vector3f::zero();
 		vector3f t2 = vector3f::zero();
@@ -404,41 +453,26 @@ namespace floppa::render {
 		void* pixels;
 		int pitch;
 
-		float invw = 1 / (float)w;
-		float invh = 1 / (float)h;
-
 		std::vector<shape*> bodies_sorted = objects;
 		std::sort(bodies_sorted.begin(), bodies_sorted.end(),
 			[this](shape*& lhs, shape*& rhs) { 
-				return (getshapecenter(lhs) - scene_camera.position).lengthsq() > (getshapecenter(rhs) - scene_camera.position).lengthsq();
+				return (getshapecenter(lhs) - scene_camera.position).lengthsq() < (getshapecenter(rhs) - scene_camera.position).lengthsq();
 			});
 
 		SDL_LockTexture(texture, NULL, &pixels, &pitch);
-
 		
-		for (int x = 0; x < w; x += 2) {
-			for (int y = 0; y < h; y += 2) {
-				ray camera_ray = scene_camera.getray(x*invw, y*invh);
-				setpixel_interp((u32*)pixels, x, y, w, packpixel(0, 0, 0, 0));
-				for (auto body : bodies_sorted) {
-					if (body->Type == ShapeType::Sphere) {
-						if (camera_ray.intersection(*((sphere*)body), &t1, &t2) && (scene_camera.isrenderable(t1) || scene_camera.isrenderable(t2) ) ) {
-							sphere* s = (sphere*)body;
-							setpixel_interp((u32*)pixels, x, y, w, 
-								packpixel(
-									norm(s->center.x + s->radius, s->center.x - s->radius, t1.x) * 255, 
-									norm(s->center.y + s->radius, s->center.y - s->radius, t1.y) * 255, 
-									norm(s->center.z + s->radius, s->center.z - s->radius, t1.z) * 255, 0));
-						}
-					}
-					else if (body->Type == ShapeType::Polygon) {
-						if (camera_ray.intersection(*((polygon*)body), &t1) && (scene_camera.isrenderable(t1))) {
-							setpixel_interp((u32*)pixels, x, y, w, packpixel(137, 137, 137, 0));
-						}
-					}
-				}
-			}
-		}
+		std::thread q1 = std::thread(&renderregion, (u32*)pixels, 0, 0, w / 2, h / 2, invw, invh, &bodies_sorted, &scene_camera,w,h);
+		std::thread q2 = std::thread(&renderregion, (u32*)pixels, w / 2, 0, w, h / 2, invw, invh, &bodies_sorted, &scene_camera, w, h);
+		std::thread q3 = std::thread(&renderregion, (u32*)pixels, 0, h / 2, w, h, invw, invh, &bodies_sorted, &scene_camera, w, h);
+		std::thread q4 = std::thread(&renderregion, (u32*)pixels, w / 2, h / 2, w, h, invw, invh, &bodies_sorted, &scene_camera, w, h);
+
+		q1.join();
+		q2.join();
+		q3.join();
+		q4.join();
+
+		//std::cout << invh;
+		//renderregion((u32*)pixels, 0, 0, w, h, invw, invh, &bodies_sorted, &scene_camera);
 
 		SDL_UnlockTexture(texture);
 	}

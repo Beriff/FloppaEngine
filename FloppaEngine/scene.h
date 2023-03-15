@@ -51,6 +51,7 @@ namespace floppa::render {
 		float y;
 		vector2f(float x, float y);
 		vector2f(vector3f free_coord);
+		vector2f();
 	};
 
 	struct matrix3x3 {
@@ -91,17 +92,28 @@ namespace floppa::render {
 	struct plane {
 		vector3f normal;
 		vector3f origin;
+		float norm_origin_dot;
+
 		bool inplane(vector3f point);
 		plane(vector3f normal, vector3f origin);
+		plane();
 	};
 
 	struct polygon : shape {
 		vector3f p1;
 		vector3f p2;
 		vector3f p3;
-		
+
+		plane polygon_plane;
+		vector3f flattening_mask;
+
+		vector2f flat_p1;
+		vector2f flat_p2;
+		vector2f flat_p3;
+
 		vector3f center;
 		polygon(vector3f p1, vector3f p2, vector3f p3);
+		polygon();
 	};
 
 	struct ray {
@@ -112,9 +124,9 @@ namespace floppa::render {
 
 		bool intersects_at(sphere body, float t);
 
-		bool intersection(sphere body, vector3f* result1, vector3f* result2);
-		bool intersection(plane planebody, vector3f* result);
-		bool intersection(polygon poly, vector3f* result);
+		bool intersection(sphere* body, vector3f* result1, vector3f* result2);
+		bool intersection(plane* planebody, vector3f* result);
+		bool intersection(polygon* poly, vector3f* result);
 	};
 	
 
@@ -126,7 +138,7 @@ namespace floppa::render {
 		ray getray(float x_t, float y_t);
 		
 		vector3f direction();
-		bool isrenderable(vector3f point);
+		bool isrenderable(vector3f& point);
 
 		void move(vector3f shift);
 		void moveforward(float amount);
@@ -140,6 +152,6 @@ namespace floppa::render {
 		std::vector<shape*> objects;
 		std::vector<plane*> planes;
 		scene();
-		void render(SDL_Texture* texture, int w, int h);
+		void render(SDL_Texture* texture, int w, int h, float invw, float invh);
 	};
 }
