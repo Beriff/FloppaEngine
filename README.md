@@ -5,7 +5,7 @@ Custom simple raytracing based rendering engine
 
 ## Roadmap
 * ~~Sphere rendering~~
-* Polygon rendering
+* ~~Polygon rendering~~
 * Object file parsing
 * Light and materials
 * Textures and normal maps
